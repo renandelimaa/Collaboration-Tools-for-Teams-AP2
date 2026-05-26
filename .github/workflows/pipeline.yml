@@ -8,6 +8,12 @@ on:
   schedule:
     - cron: '0 0 * * 0' # Roda todo domingo à meia-noite
 
+# Estas permissões são OBRIGATÓRIAS para o GitHub Pages moderno funcionar
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   build_site:
     runs-on: ubuntu-latest
@@ -27,40 +33,31 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}
 
       - name: Instalar dependências e Zensical 🛠️
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install zensical; fi
+          pip install zensical
 
       - name: Build do site com Zensical 🏗️
         run: zensical build
 
+      # Upload usando a Action OFICIAL do GitHub Pages exigida na AP2
       - name: Upload do Artefato HTML 📦
-        uses: actions/upload-artifact@v4
+        if: matrix.python-version == '3.11' # Só precisamos subir o site uma vez
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: site-html-${{ matrix.python-version }}
-          path: site/ # Altere aqui se a pasta de saída do Zensical tiver outro nome
+          path: site/ 
 
   deploy_site:
     runs-on: ubuntu-latest
-    needs: build_site
-    if: github.event_name != 'pull_request' # Garante a segurança exigida
+    needs: build_site # Aguarda a conclusão do build
+    if: github.event_name != 'pull_request' # Nunca corre num PR (Regra da AP2)
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout do código 📑
-        uses: actions/checkout@v4
-
-      - name: Download do Artefato 📥
-        uses: actions/download-artifact@v4
-        with:
-          name: site-html-3.11 # Usa o HTML gerado pela versão 3.11 do Python
-          path: public/
-
       - name: Deploy para o GitHub Pages 🚀
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./public
+        id: deployment
+        uses: actions/deploy-pages@v4
